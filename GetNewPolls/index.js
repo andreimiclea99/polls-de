@@ -31,28 +31,28 @@ async function sendSlack(poll) {
   await axios.post(SLACK_WEBHOOK, { text: msg });
 }
 
-export default async function (context) {
-  context.log("🔍 Checking for new Wahlrecht polls…");
-
-  const polls = await scrapeWahlrecht();
-  const state = loadState();
-
-  const newPolls = polls.filter(p => {
-    const prev = state[p.institute];
-    return !prev || p.published > prev;
-  });
-
-  if (newPolls.length === 0) {
-    context.log("✅ No new polls today.");
-    return;
+export default async function (context, myTimer) {
+    try {
+      context.log("🔍 Checking for new polls...");
+      const newPolls = await scrapeWahlrecht();
+  
+      if (newPolls.length === 0) {
+        context.log("✅ No new polls");
+        return;
+      }
+  
+      context.log(`📢 Found ${newPolls.length} new poll(s)`);
+  
+      for (const poll of newPolls) {
+        await fetch(process.env.SLACK_WEBHOOK, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: `🗳 New poll: ${poll.institute} (${poll.published})\n${poll.sourceLink}`
+          })
+        });
+      }
+    } catch (err) {
+      context.log.error("❌ Error running function:", err);
+    }
   }
-
-  for (const poll of newPolls) {
-    context.log(`📌 New poll: ${poll.institute} — ${poll.published}`);
-    await sendSlack(poll);
-    state[p.institute] = poll.published;
-  }
-
-  saveState(state);
-  context.log(`✅ ${newPolls.length} alert(s) sent to Slack.`);
-}

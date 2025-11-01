@@ -1,6 +1,16 @@
 {
+  "name": "",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/functions/*.js",
+  "scripts": {
+    "start": "func start",
+    "test": "echo \"No tests yet...\""
+  },
   "dependencies": {
-    "axios": "^1.13.1",
-    "cheerio": "^1.1.2"
+    "@azure/functions": "^4.0.0"
+  },
+  "devDependencies": {
+    "azure-functions-core-tools": "^4.x"
   }
 }
