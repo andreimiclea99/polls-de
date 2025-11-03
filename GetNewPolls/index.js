@@ -38,8 +38,10 @@ export default async function (context, myTimer) {
     context.log("🔍 Checking for new polls...");
     const newPolls = await scrapeWahlrecht();
 
+    context.log(`📊 State updated with polls data`);
+
     if (newPolls.length === 0) {
-      context.log("✅ No new polls found");
+      context.log("✅ No new polls found (state is up to date)");
       return;
     }
 
@@ -47,6 +49,7 @@ export default async function (context, myTimer) {
 
     for (const poll of newPolls) {
       context.log(`📊 Sending to Slack: ${poll.institute} - ${poll.published}`);
+      context.log(`📊 Results: ${JSON.stringify(poll.results)}`);
       await sendSlack(poll);
     }
 
@@ -54,6 +57,6 @@ export default async function (context, myTimer) {
   } catch (err) {
     context.log.error("❌ Error running function:", err.message);
     context.log.error(err.stack);
-    throw err; // Re-throw to mark function execution as failed
+    throw err;
   }
 }

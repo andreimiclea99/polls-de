@@ -35,54 +35,86 @@ async function streamToString(stream) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// ✅ Enhanced scraper that extracts poll percentages
+// ✅ Parse German date format (DD.MM.YYYY) to ISO (YYYY-MM-DD)
+function parseGermanDate(dateStr) {
+  const parts = dateStr.trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if (!parts) return null;
+  const [, day, month, year] = parts;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
 export default async function scrapeWahlrecht() {
   const state = await loadState();
   const updated = [];
 
+  console.log("📡 Fetching wahlrecht.de...");
   const { data } = await axios.get("https://www.wahlrecht.de/umfragen/");
   const $ = cheerio.load(data);
 
-  // Get party names from header row
-  const parties = [];
-  $("#partie th.part").each((i, el) => {
-    const partyName = $(el).text().trim();
-    if (partyName) parties.push(partyName);
-  });
+  const table = $("table.wilko");
 
-  // Process each poll column
-  const dateRow = $("#datum td.di, #datum td.dir");
-  dateRow.each((index, el) => {
-    const instituteHeader = $("thead th.in").eq(index);
-    const institute = instituteHeader.text().trim().replace(/\s+/g, "");
-    const publishedText = $(el).text().trim();
-    const published = new Date(publishedText).toISOString().slice(0, 10);
-    const link = new URL(instituteHeader.find("a")?.attr("href") || "", "https://www.wahlrecht.de/umfragen/").href;
+  const institutes = table.find("thead tr th.in").map((i, el) => ({
+    name: $(el).text().trim().replace(/\s+/g, " "),
+    link: $(el).find("a").attr("href")
+  })).get();
 
-    // Extract poll results for each party
-    const results = {};
-    parties.forEach((party, partyIndex) => {
-      const resultCell = $(`#partie tr`).eq(partyIndex + 1).find("td").eq(index);
-      const percentage = resultCell.text().trim().replace(",", ".");
-      if (percentage && !isNaN(parseFloat(percentage))) {
-        results[party] = parseFloat(percentage);
+  const dates = table.find("tbody tr#datum td").map((i, el) => {
+    const raw = $(el).text().trim();
+    return {
+      raw,
+      parsed: parseGermanDate(raw),
+    };
+  }).get();
+
+  const partyRowMap = {
+    "cdu": "CDU",
+    "afd": "AFD",
+    "spd": "SPD",
+    "gru": "GRU",
+    "lin": "LIN",
+    "bsw": "BSW",
+    "fdp": "FDP",
+    "son": "SON",
+  };
+
+  for (const [rowId, party] of Object.entries(partyRowMap)) {
+    const row = table.find(`tr#${rowId}`);
+    row.find("td").each((colIndex, cell) => {
+      const institute = institutes[colIndex];
+      const date = dates[colIndex];
+      if (!institute || !date?.parsed) return;
+
+      const valueText = $(cell).text().trim().replace(",", ".");
+      const value = parseFloat(valueText);
+      if (isNaN(value)) return;
+
+      const pollKey = `${institute.name}_${date.parsed}`;
+      if (!state[pollKey]) {
+        state[pollKey] = {
+          institute: institute.name,
+          link: `https://www.wahlrecht.de/umfragen/${institute.link}`,
+          published: date.parsed,
+          results: {}
+        };
       }
+
+      state[pollKey].results[party] = value;
     });
+  }
 
-    // Check if this is a new poll or updated poll
-    const pollKey = `${institute}_${published}`;
-    if (!state[pollKey] || JSON.stringify(state[pollKey].results) !== JSON.stringify(results)) {
-      updated.push({ 
-        institute, 
-        published, 
-        link,
-        results 
-      });
-      state[pollKey] = { published, link, results };
+  // ✅ Detect new or updated polls correctly
+  const prevState = await loadState();
+  for (const [pollKey, pollData] of Object.entries(state)) {
+    if (!prevState[pollKey] ||
+        JSON.stringify(prevState[pollKey].results) !== JSON.stringify(pollData.results)) {
+      updated.push(pollData);
     }
-  });
+  }
 
-  if (updated.length > 0) await saveState(state);
+  if (Object.keys(state).length > 0) {
+    await saveState(state);
+    console.log(`💾 Updated state with ${Object.keys(state).length} polls stored`);
+  }
 
   return updated;
 }
