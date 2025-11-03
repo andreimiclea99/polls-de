@@ -34,10 +34,11 @@ async function saveState(state) {
   );
 }
 
-function normalizeNumber(num) {
-  if (!num) return null;
-  return parseFloat(num.replace(",", ".").replace("%", ""));
-}
+function normalizeNumber(val) {
+    const cleaned = val.replace("%", "").replace(",", ".").trim();
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num;
+  }  
 
 export default async function scrapeRomania() {
   const prevState = await loadState();
@@ -85,11 +86,11 @@ export default async function scrapeRomania() {
     };
   
     const pollData = {
-      institute,
-      published: date,
-      link: sourceLink,
-      results,
-    };
+        institute,
+        published: date,
+        link,
+        results,
+      };      
   
     if (!prevState[pollKey] ||
         JSON.stringify(prevState[pollKey].results) !== JSON.stringify(results)) {
