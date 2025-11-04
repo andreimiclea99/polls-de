@@ -87,63 +87,51 @@ export default async function scrapeWahlrecht() {
     const row = table.find(`tr#${rowId}`);
     
     row.find("td").each((colIndex, cell) => {
-      
-      // ✅ Now the indices match correctly
-      let institute = institutes[colIndex];
+      // 👇 shift alignment: table data starts at index 1 in header
+      const correctedIndex = colIndex - 1;
+      if (correctedIndex < 0) return;
+    
+      let institute = institutes[correctedIndex];
       if (!institute) return;
-  
+    
       let instituteName = institute.name;
       let instituteLink = institute.link;
-  
-      // ✅ Try override with hyperlink inside the party cell
+    
       const anchor = $(cell).find("a[href]").first();
       if (anchor.length) {
         const href = anchor.attr("href").toLowerCase();
-      
-        // Order: most specific first
-        if (href.includes("insa")) {
-          instituteName = "INSA";
-        } else if (href.includes("yougov")) {
-          instituteName = "YouGov";
-        } else if (href.includes("forsa")) {
-          instituteName = "Forsa";
-        } else if (href.includes("politbarometer")) {
-          instituteName = "Forsch'gr.Wahlen";
-        } else if (href.includes("allensbach")) {
-          instituteName = "Allensbach";
-        } else if (href.includes("dimap")) {
-          instituteName = "Infratest dimap";
-        } else if (href.includes("gms")) {
-          instituteName = "GMS";
-        } else if (href.includes("verian") || href.includes("emnid")) {
+        if (href.includes("insa")) instituteName = "INSA";
+        else if (href.includes("yougov")) instituteName = "YouGov";
+        else if (href.includes("forsa")) instituteName = "Forsa";
+        else if (href.includes("kantar")) instituteName = "Kantar";
+        else if (href.includes("allensbach")) instituteName = "Allensbach";
+        else if (href.includes("dimap")) instituteName = "Infratest dimap";
+        else if (href.includes("gms")) instituteName = "GMS";
+        else if (href.includes("verian") || href.includes("emnid"))
           instituteName = "Verian (Emnid)";
-        }
-      
         instituteLink = href;
       }
-
-      institute = { name: instituteName, link: instituteLink };
-  
-      const date = dates[colIndex];
+    
+      const date = dates[correctedIndex];
       if (!date?.parsed) return;
-  
+    
       const valueText = $(cell).text().trim().replace(",", ".");
       const value = parseFloat(valueText);
       if (isNaN(value)) return;
-  
-      const pollKey = `${institute.name}_${date.parsed}`;
-  
+    
+      const pollKey = `${instituteName}_${date.parsed}`;
       if (!state[pollKey]) {
         state[pollKey] = {
-          institute: institute.name,
-          link: `https://www.wahlrecht.de/umfragen/${institute.link}`,
+          institute: instituteName,
+          link: `https://www.wahlrecht.de/umfragen/${instituteLink}`,
           published: date.parsed,
           results: {},
         };
       }
-  
+    
       state[pollKey].results[party] = value;
     });
+    
   }  
 
   // ✅ Detect new or updated polls correctly
