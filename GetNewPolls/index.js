@@ -1,62 +1,57 @@
-import scrapeWahlrecht from "../polls.js";
+import scrapeGermany from "../polls.js";
 
 const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK;
 
-async function sendSlack(poll) {
-  const partyEmojis = {
-    "CDU/CSU": "🔵",
-    "SPD": "🔴", 
-    "GRÜNE": "🟢",
-    "FDP": "🟡",
-    "LINKE": "🟣",
-    "AfD": "🔵",
-    "BSW": "🟤",
-    "Others": "⚪"
-  };
+export default async function (context, myTimer) {
+  context.log("🇩🇪 Checking Germany (latest only)...");
+  const polls = await scrapeGermany();
 
-  // Build results text
-  let resultsText = "";
-  for (const [party, percentage] of Object.entries(poll.results)) {
-    const emoji = partyEmojis[party] || "▪️";
-    resultsText += `${emoji} ${party}: ${percentage}%\n`;
+  if (!polls.length) {
+    context.log("✅ No new German polls");
+    return;
   }
 
-  const msg = `🗳️ *New German Poll: ${poll.institute}*\n` +
-    `📅 Published: ${poll.published}\n\n` +
-    `*Results:*\n${resultsText}\n` +
-    `🔗 ${poll.link}`;
+  for (const p of polls) {
+    const lines = [];
+    lines.push(`:ballot_box_with_ballot: *New German Poll: ${p.institute}*`);
+    lines.push(`:date: Published: ${p.published}`);
+    lines.push(`Results:`);
 
-  await fetch(SLACK_WEBHOOK, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: msg })
-  });
+    // Order for output
+    const order = ["CDU", "AFD", "SPD", "GRU", "LIN", "FDP", "FW", "BSW", "Others"];
+    for (const k of order) {
+      if (p.results[k] == null) continue;        // skip missing
+      const val = p.results[k];
+      const label = k === "Others" ? "Others" : k;
+      lines.push(`${symbolFor(label)} ${label}: ${val}%`);
+    }
+
+    lines.push(`:link: ${p.link}`);
+
+    const text = lines.join("\n");
+    context.log(`📊 Sending to Slack: ${p.institute} - ${p.published}`);
+    await fetch(SLACK_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  context.log("✅ Germany poll notification complete");
 }
 
-export default async function (context, myTimer) {
-  try {
-    context.log("🔍 Checking for new polls...");
-    const newPolls = await scrapeWahlrecht();
-
-    context.log(`📊 State updated with polls data`);
-
-    if (newPolls.length === 0) {
-      context.log("✅ No new polls found (state is up to date)");
-      return;
-    }
-
-    context.log(`📢 Found ${newPolls.length} new poll(s)`);
-
-    for (const poll of newPolls) {
-      context.log(`📊 Sending to Slack: ${poll.institute} - ${poll.published}`);
-      context.log(`📊 Results: ${JSON.stringify(poll.results)}`);
-      await sendSlack(poll);
-    }
-
-    context.log("✅ All notifications sent successfully");
-  } catch (err) {
-    context.log.error("❌ Error running function:", err.message);
-    context.log.error(err.stack);
-    throw err;
-  }
+function symbolFor(party) {
+  // Keep your previous emoji mapping; quick neutral defaults below:
+  const map = {
+    CDU: ":black_small_square:",
+    AFD: ":black_small_square:",
+    SPD: ":red_circle:",
+    GRU: ":black_small_square:",
+    LIN: ":black_small_square:",
+    FDP: ":large_yellow_circle:",
+    FW:  "🟠",
+    BSW: ":large_brown_circle:",
+    Others: ":white_circle:",
+  };
+  return map[party] || ":black_small_square:";
 }
